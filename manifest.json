@@ -1,0 +1,9 @@
+{
+  "display_name": "OpenAI Image Relay",
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "author": "Codex",
+  "version": "0.1.0",
+  "auto_update": false
+}

@@ -1,0 +1,75 @@
+<div class="oair-settings-ui">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px; gap:8px;">
+        <div id="oair_status" style="font-size:0.8em; color:cyan;">就绪</div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.8em; white-space:nowrap;">
+            <input id="oair_enabled" type="checkbox">
+            启用
+        </label>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 5px; margin-bottom: 8px;">
+        <label style="font-weight:bold; font-size:0.9em;">1. 主模型提示注入</label>
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:8px;">世界书式默认提示词</label>
+        <textarea id="oair_main_prompt" class="text_pole" rows="12" style="width:100%; box-sizing:border-box;" placeholder="这里的内容会像常驻世界书一样注入到主模型提示链里。"></textarea>
+
+        <div style="margin-top:6px; font-size:0.75em; opacity:0.8;">
+            这段文字会以系统规则的方式自动注入到主模型提示链开头，不会发送给 image2 后端。
+        </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 5px; margin-bottom: 8px;">
+        <label style="font-weight:bold; font-size:0.9em;">2. 图片后端配置</label>
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:8px;">服务地址</label>
+        <input id="oair_service_url" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="http://127.0.0.1:8199/v1/chat/completions">
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px;">
+            <div>
+                <label style="display:block; font-size:0.75em; opacity:0.8;">API 密钥</label>
+                <input id="oair_api_key" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="sk-any">
+            </div>
+            <div>
+                <label style="display:block; font-size:0.75em; opacity:0.8;">模型</label>
+                <input id="oair_model" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="any">
+            </div>
+        </div>
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:6px;">超时（毫秒）</label>
+        <input id="oair_timeout_ms" type="number" min="1000" step="1000" class="text_pole" style="width:100%; box-sizing:border-box;">
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:6px;">发送给图片后端的模板</label>
+        <textarea id="oair_prompt_template" class="text_pole" rows="3" style="width:100%; box-sizing:border-box;" placeholder="在需要插入提取内容的位置使用 {{prompt}}。"></textarea>
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:6px;">额外请求体 JSON（可选）</label>
+        <textarea id="oair_extra_body" class="text_pole" rows="3" style="width:100%; box-sizing:border-box;" placeholder='{"preset_name":"image"}'></textarea>
+
+        <div style="margin-top:6px; font-size:0.75em; opacity:0.8;">
+            这里只负责把提取出来的 <code>&lt;pic prompt="..."&gt;</code> 包装后再发给 image2 后端。
+        </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 5px; margin-bottom: 8px;">
+        <label style="font-weight:bold; font-size:0.9em;">3. 提取与替换</label>
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:8px;">提取提示词正则</label>
+        <textarea id="oair_extraction_regex" class="text_pole" rows="3" style="width:100%; box-sizing:border-box;" placeholder='/&lt;pic[^&gt;]*prompt="([^"]+)"[^&gt;]*&gt;/g'></textarea>
+
+        <label style="display:block; font-size:0.75em; opacity:0.8; margin-top:6px;">返回图片正则回退</label>
+        <textarea id="oair_response_image_regex" class="text_pole" rows="2" style="width:100%; box-sizing:border-box;" placeholder='/!\\[[^\\]]*\\]\\(([^)\\s]+)\\)/g'></textarea>
+
+        <div style="margin-top:6px; font-size:0.75em; opacity:0.8;">
+            扩展会优先读取 <code>media</code> 这类结构化图片字段。只有当后端把图片链接放在文本里返回时，才会使用这里的回退正则。
+        </div>
+    </div>
+
+    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+        <label style="font-weight:bold; font-size:0.9em;">4. 测试</label>
+        <textarea id="oair_test_prompt" class="text_pole" rows="2" style="width:100%; box-sizing:border-box; margin-top:6px;" placeholder="要发送给后端的提示词..."></textarea>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+            <button id="oair_btn_test" class="menu_button" style="flex:1; justify-content:center;">运行测试</button>
+            <button id="oair_btn_clear_preview" class="menu_button" style="justify-content:center;">清空</button>
+        </div>
+        <div id="oair_test_preview" style="display:grid; gap:8px; margin-top:8px;"></div>
+    </div>
+</div>
