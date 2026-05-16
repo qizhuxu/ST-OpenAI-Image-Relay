@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-// ST-OpenAI-Image-Relay — Enhanced Version
+// ST-OpenAI-Image-Relay — Plan C (Hybrid UI Architecture)
 // SillyTavern 第三方扩展：AI 图片生成中继
+// L0 (Panel) + L1 (FAB) + L2 (Floating Window)
 // ═══════════════════════════════════════════════════════════════
 
 import { extension_settings, getContext } from "../../../extensions.js";
@@ -128,6 +129,10 @@ const defaultSettings = {
     // ─── 消息生图 ──────────────────────────────────────────
     messageGenEnabled: true,
     summarizeTemplate: DEFAULT_SUMMARIZE_TEMPLATE,
+
+    // ─── FAB & 浮动窗口 ─────────────────────────────────────
+    fabEnabled: false,
+    fabPosition: { x: null, y: null },
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -138,34 +143,50 @@ $(function () {
     (async function () {
         ensureSettings();
         applyMainPromptInjection();
+        loadStylesheet();
 
+        // ─── L0: 注入面板 UI ──────────────────────────────
         setInterval(() => {
-            if ($("#oair_ui_drawer").length > 0) {
-                return;
-            }
-
+            if ($("#oair_ui_drawer").length > 0) return;
             const container = $("#extensions_settings");
-            if (container.length > 0) {
-                injectUi(container);
-            }
+            if (container.length > 0) injectUi(container);
         }, 1000);
 
+        // ─── L1: 创建 FAB ─────────────────────────────────
+        createFab();
+
+        // ─── L2: 创建浮动窗口（隐藏） ─────────────────────
+        createFloatingPanel();
+
+        // ─── 事件监听 ──────────────────────────────────────
         eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
         eventSource.on(event_types.MESSAGE_RENDERED, onMessageRendered);
     })();
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 4: UI — INJECTION & BINDING
+// SECTION 4: UI — STYLESHEET LOADING
+// ═══════════════════════════════════════════════════════════════
+
+function loadStylesheet() {
+    if ($(`link[href="${extensionFolderPath}/style.css"]`).length > 0) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `${extensionFolderPath}/style.css`;
+    document.head.appendChild(link);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SECTION 5: UI — PANEL INJECTION (L0)
 // ═══════════════════════════════════════════════════════════════
 
 async function injectUi(container) {
     let htmlContent = "";
 
     try {
-        htmlContent = await $.get(`${extensionFolderPath}/settings.html`);
+        htmlContent = await $.get(`${extensionFolderPath}/settings_panel.html`);
     } catch (error) {
-        console.error(`[${extensionName}] Failed to load settings.html`, error);
+        console.error(`[${extensionName}] Failed to load settings_panel.html`, error);
         return;
     }
 
@@ -179,140 +200,471 @@ async function injectUi(container) {
     </div>`;
 
     container.prepend(drawerHtml);
-    bindUiEvents();
-    updateSettingsUi();
+    bindPanelEvents();
+    syncAllUi();
     setStatus("就绪");
 }
 
-function bindUiEvents() {
-    // 抽屉折叠
-    $("#oair_ui_drawer .inline-drawer-toggle").off("click").on("click", function (event) {
-        event.stopPropagation();
-        event.preventDefault();
-        $(this).parent().find(".inline-drawer-content").slideToggle(200);
-        $(this).find(".inline-drawer-icon").toggleClass("down up");
+// ═══════════════════════════════════════════════════════════════
+// SECTION 6: UI — FAB (L1)
+// ═══════════════════════════════════════════════════════════════
+
+function createFab() {
+    if ($("#oair_fab").length > 0) return;
+
+    const fab = $('<div id="oair_fab"><i class="fa-solid fa-image"></i></div>');
+    $("body").append(fab);
+
+    // 应用保存的位置或默认位置
+    const settings = extension_settings[extensionName];
+    if (settings.fabPosition && settings.fabPosition.x != null && settings.fabPosition.y != null) {
+        fab.css({ left: settings.fabPosition.x + "px", top: settings.fabPosition.y + "px" });
+    } else {
+        // 默认：右下角 (right: 20px, bottom: 80px)
+        fab.css({
+            left: (window.innerWidth - 44 - 20) + "px",
+            top: (window.innerHeight - 44 - 80) + "px",
+        });
+    }
+
+    // 根据 fabEnabled 显示/隐藏
+    if (settings.fabEnabled) {
+        fab.addClass("oair-fab--visible");
+    }
+
+    // ─── 拖拽处理 ─────────────────────────────────────────
+    let isDragging = false;
+    let hasMoved = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    fab.on("mousedown", function (e) {
+        e.preventDefault();
+        isDragging = true;
+        hasMoved = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = fab.offset().left;
+        startTop = fab.offset().top;
+
+        $(document).on("mousemove.oair_fab", function (e2) {
+            const dx = e2.clientX - startX;
+            const dy = e2.clientY - startY;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                hasMoved = true;
+            }
+            // 限制在视口内
+            let newLeft = Math.max(0, Math.min(window.innerWidth - 44, startLeft + dx));
+            let newTop = Math.max(0, Math.min(window.innerHeight - 44, startTop + dy));
+            fab.css({
+                left: newLeft + "px",
+                top: newTop + "px",
+                right: "auto",
+                bottom: "auto",
+            });
+        });
+
+        $(document).on("mouseup.oair_fab", function () {
+            $(document).off(".oair_fab");
+            isDragging = false;
+
+            if (hasMoved) {
+                // 保存位置到设置
+                extension_settings[extensionName].fabPosition = {
+                    x: fab.offset().left,
+                    y: fab.offset().top,
+                };
+                saveSettingsDebounced();
+            } else {
+                // 点击：切换浮动窗口
+                toggleFloatingPanel();
+            }
+        });
     });
 
-    $("#oair_ui_drawer .inline-drawer-content").off("click").on("click", (event) => event.stopPropagation());
+    // ─── 触摸支持 ─────────────────────────────────────────
+    fab.on("touchstart", function (e) {
+        const touch = e.originalEvent.touches[0];
+        isDragging = true;
+        hasMoved = false;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        startLeft = fab.offset().left;
+        startTop = fab.offset().top;
 
+        $(document).on("touchmove.oair_fab", function (e2) {
+            e2.preventDefault();
+            const t = e2.originalEvent.touches[0];
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                hasMoved = true;
+            }
+            let newLeft = Math.max(0, Math.min(window.innerWidth - 44, startLeft + dx));
+            let newTop = Math.max(0, Math.min(window.innerHeight - 44, startTop + dy));
+            fab.css({
+                left: newLeft + "px",
+                top: newTop + "px",
+                right: "auto",
+                bottom: "auto",
+            });
+        });
+
+        $(document).on("touchend.oair_fab", function () {
+            $(document).off(".oair_fab");
+            isDragging = false;
+
+            if (hasMoved) {
+                extension_settings[extensionName].fabPosition = {
+                    x: fab.offset().left,
+                    y: fab.offset().top,
+                };
+                saveSettingsDebounced();
+            } else {
+                toggleFloatingPanel();
+            }
+        });
+    });
+}
+
+/**
+ * 更新 FAB 视觉状态
+ * @param {'idle'|'loading'|'success'|'error'} state
+ */
+function updateFabState(state) {
+    const fab = $("#oair_fab");
+    if (!fab.length) return;
+
+    fab.removeClass("oair-fab--loading oair-fab--success oair-fab--error");
+
+    if (state === "loading") {
+        fab.addClass("oair-fab--loading");
+    } else if (state === "success") {
+        fab.addClass("oair-fab--success");
+        setTimeout(() => fab.removeClass("oair-fab--success"), 2000);
+    } else if (state === "error") {
+        fab.addClass("oair-fab--error");
+        setTimeout(() => fab.removeClass("oair-fab--error"), 3000);
+    }
+    // 'idle' → 无额外 class
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SECTION 7: UI — FLOATING PANEL (L2)
+// ═══════════════════════════════════════════════════════════════
+
+function createFloatingPanel() {
+    if ($("#oair_floating_panel").length > 0) return;
+
+    const panel = $(`
+        <div id="oair_floating_panel">
+            <div class="oair-floating-header">
+                <h3>🖼️ 图片中继</h3>
+                <button class="oair-floating-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="oair-floating-body"></div>
+        </div>
+    `);
+
+    $("body").append(panel);
+
+    // 居中定位
+    const panelWidth = 480;
+    const panelHeight = 600;
+    panel.css({
+        left: Math.max(20, (window.innerWidth - panelWidth) / 2) + "px",
+        top: Math.max(20, (window.innerHeight - panelHeight) / 2) + "px",
+    });
+
+    // 关闭按钮
+    panel.find(".oair-floating-close").on("click", () => toggleFloatingPanel(false));
+
+    // ─── 标题栏拖拽 ──────────────────────────────────────
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    panel.find(".oair-floating-header").on("mousedown", function (e) {
+        // 点击关闭按钮时不拖拽
+        if ($(e.target).closest(".oair-floating-close").length) return;
+        e.preventDefault();
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = panel.offset().left;
+        startTop = panel.offset().top;
+
+        $(document).on("mousemove.oair_panel", function (e2) {
+            const dx = e2.clientX - startX;
+            const dy = e2.clientY - startY;
+            panel.css({
+                left: (startLeft + dx) + "px",
+                top: (startTop + dy) + "px",
+                right: "auto",
+            });
+        });
+
+        $(document).on("mouseup.oair_panel", function () {
+            $(document).off(".oair_panel");
+            isDragging = false;
+        });
+    });
+
+    // 触摸拖拽
+    panel.find(".oair-floating-header").on("touchstart", function (e) {
+        if ($(e.target).closest(".oair-floating-close").length) return;
+        const touch = e.originalEvent.touches[0];
+        isDragging = true;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        startLeft = panel.offset().left;
+        startTop = panel.offset().top;
+
+        $(document).on("touchmove.oair_panel", function (e2) {
+            e2.preventDefault();
+            const t = e2.originalEvent.touches[0];
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            panel.css({
+                left: (startLeft + dx) + "px",
+                top: (startTop + dy) + "px",
+                right: "auto",
+            });
+        });
+
+        $(document).on("touchend.oair_panel", function () {
+            $(document).off(".oair_panel");
+            isDragging = false;
+        });
+    });
+
+    // ─── 加载 settings_full.html 内容 ─────────────────────
+    $.get(`${extensionFolderPath}/settings_full.html`)
+        .then(function (html) {
+            panel.find(".oair-floating-body").html(html);
+            bindFloatingEvents();
+            syncAllUi();
+        })
+        .catch(function (error) {
+            console.error(`[${extensionName}] Failed to load settings_full.html`, error);
+        });
+}
+
+/**
+ * 显示/隐藏浮动窗口
+ * @param {boolean} [show] - true=显示, false=隐藏, undefined=切换
+ */
+function toggleFloatingPanel(show) {
+    const panel = $("#oair_floating_panel");
+    if (!panel.length) return;
+
+    if (typeof show === "undefined") {
+        show = !panel.hasClass("oair-floating--visible");
+    }
+
+    if (show) {
+        panel.addClass("oair-floating--visible");
+        syncAllUi();
+    } else {
+        panel.removeClass("oair-floating--visible");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SECTION 8: UI — PANEL EVENT BINDING (L0)
+// ═══════════════════════════════════════════════════════════════
+
+function bindPanelEvents() {
+    // ─── 抽屉折叠 ─────────────────────────────────────────
+    $("#oair_ui_drawer .inline-drawer-toggle")
+        .off("click.oair")
+        .on("click.oair", function (event) {
+            event.stopPropagation();
+            event.preventDefault();
+            $(this).parent().find(".inline-drawer-content").slideToggle(200);
+            $(this).find(".inline-drawer-icon").toggleClass("down up");
+        });
+
+    $("#oair_ui_drawer .inline-drawer-content")
+        .off("click.oair")
+        .on("click.oair", (event) => event.stopPropagation());
+
+    // ─── 面板设置 ─────────────────────────────────────────
+    // 启用/禁用（双向同步）
+    bindScopedInput("#oair_enabled", "#oair_fl_enabled", "enabled", ($el) => $el.prop("checked"));
+
+    // FAB 开关
+    bindScopedInput(null, null, "fabEnabled", null);
+    // FAB 开关仅存在于面板
+    $("#oair_fab_enabled").off("input.oair change.oair").on("change.oair", function () {
+        extension_settings[extensionName].fabEnabled = $(this).prop("checked");
+        saveSettingsDebounced();
+        const fab = $("#oair_fab");
+        if (extension_settings[extensionName].fabEnabled) {
+            fab.addClass("oair-fab--visible");
+        } else {
+            fab.removeClass("oair-fab--visible");
+        }
+        syncAllUi();
+    });
+
+    // 打开浮动窗口按钮
+    $("#oair_btn_open_floating").off("click.oair").on("click.oair", function (e) {
+        e.preventDefault();
+        toggleFloatingPanel(true);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SECTION 9: UI — FLOATING EVENT BINDING (L2)
+// ═══════════════════════════════════════════════════════════════
+
+function bindFloatingEvents() {
     // ─── 基础设置 ──────────────────────────────────────────
-    bindSettingInput("#oair_enabled", "enabled", () => $("#oair_enabled").prop("checked"));
-    bindSettingInput("#oair_main_prompt", "mainPrompt", () => $("#oair_main_prompt").val());
+    bindScopedInput(null, "#oair_fl_main_prompt", "mainPrompt", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_message_gen_enabled", "messageGenEnabled", ($el) => $el.prop("checked"));
 
     // ─── 后端设置 ──────────────────────────────────────────
-    bindSettingInput("#oair_api_mode", "apiMode", () => $("#oair_api_mode").val());
-    bindSettingInput("#oair_service_url", "serviceUrl", () => $("#oair_service_url").val());
-    bindSettingInput("#oair_api_key", "apiKey", () => $("#oair_api_key").val());
-    bindSettingInput("#oair_model", "model", () => $("#oair_model").val());
-    bindSettingInput("#oair_timeout_ms", "timeoutMs", () => Number($("#oair_timeout_ms").val()) || defaultSettings.timeoutMs);
-    bindSettingInput("#oair_prompt_template", "promptTemplate", () => $("#oair_prompt_template").val());
-    bindSettingInput("#oair_images_prompt_template", "imagesPromptTemplate", () => $("#oair_images_prompt_template").val());
-    bindSettingInput("#oair_image_size", "imageSize", () => $("#oair_image_size").val());
-    bindSettingInput("#oair_image_count", "imageCount", () => Number($("#oair_image_count").val()) || 1);
-    bindSettingInput("#oair_image_response_format", "imageResponseFormat", () => $("#oair_image_response_format").val());
-    bindSettingInput("#oair_extra_body", "extraBody", () => $("#oair_extra_body").val());
+    bindScopedInput(null, "#oair_fl_service_url", "serviceUrl", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_api_key", "apiKey", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_model", "model", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_timeout_ms", "timeoutMs", ($el) => Number($el.val()) || defaultSettings.timeoutMs);
+    bindScopedInput(null, "#oair_fl_prompt_template", "promptTemplate", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_images_prompt_template", "imagesPromptTemplate", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_image_size", "imageSize", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_image_count", "imageCount", ($el) => Number($el.val()) || 1);
+    bindScopedInput(null, "#oair_fl_image_response_format", "imageResponseFormat", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_extra_body", "extraBody", ($el) => $el.val());
 
-    // API 模式切换：显示/隐藏对应字段
-    $("#oair_api_mode").off("change").on("change", function () {
+    // API 模式切换（需要特殊处理字段可见性）
+    $("#oair_fl_api_mode").off("change.oair").on("change.oair", function () {
         const isImagesMode = $(this).val() === "images";
-        $(".oair-images-api-fields").toggle(isImagesMode);
-        $(".oair-chat-api-fields").toggle(!isImagesMode);
+        $("#oair_floating_panel .oair-images-api-fields").toggle(isImagesMode);
+        $("#oair_floating_panel .oair-chat-api-fields").toggle(!isImagesMode);
         extension_settings[extensionName].apiMode = $(this).val();
         saveSettingsDebounced();
+        applyMainPromptInjection();
+        syncAllUi();
     });
 
     // ─── 提取设置 ──────────────────────────────────────────
-    bindSettingInput("#oair_extraction_regex", "extractionRegex", () => $("#oair_extraction_regex").val());
-    bindSettingInput("#oair_response_image_regex", "responseImageRegex", () => $("#oair_response_image_regex").val());
+    bindScopedInput(null, "#oair_fl_extraction_regex", "extractionRegex", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_response_image_regex", "responseImageRegex", ($el) => $el.val());
 
     // ─── 优化设置 ──────────────────────────────────────────
-    bindSettingInput("#oair_optimize_enabled", "optimizeEnabled", () => $("#oair_optimize_enabled").prop("checked"));
-    bindSettingInput("#oair_optimize_auto", "optimizeAuto", () => $("#oair_optimize_auto").prop("checked"));
-    bindSettingInput("#oair_optimize_template", "optimizeTemplate", () => $("#oair_optimize_template").val());
-    bindSettingInput("#oair_optimize_api_url", "optimizeApiUrl", () => $("#oair_optimize_api_url").val());
-    bindSettingInput("#oair_optimize_model", "optimizeModel", () => $("#oair_optimize_model").val());
-    bindSettingInput("#oair_optimize_api_key", "optimizeApiKey", () => $("#oair_optimize_api_key").val());
+    bindScopedInput(null, "#oair_fl_optimize_enabled", "optimizeEnabled", ($el) => $el.prop("checked"));
+    bindScopedInput(null, "#oair_fl_optimize_auto", "optimizeAuto", ($el) => $el.prop("checked"));
+    bindScopedInput(null, "#oair_fl_optimize_template", "optimizeTemplate", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_optimize_api_url", "optimizeApiUrl", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_optimize_model", "optimizeModel", ($el) => $el.val());
+    bindScopedInput(null, "#oair_fl_optimize_api_key", "optimizeApiKey", ($el) => $el.val());
 
     // ─── NSFW 规避 ──────────────────────────────────────────
-    bindSettingInput("#oair_nsfw_avoidance", "nsfwAvoidance", () => $("#oair_nsfw_avoidance").prop("checked"));
-    bindSettingInput("#oair_nsfw_avoidance_template", "nsfwAvoidanceTemplate", () => $("#oair_nsfw_avoidance_template").val());
+    bindScopedInput(null, "#oair_fl_nsfw_avoidance", "nsfwAvoidance", ($el) => $el.prop("checked"));
+    bindScopedInput(null, "#oair_fl_nsfw_avoidance_template", "nsfwAvoidanceTemplate", ($el) => $el.val());
 
     // ─── 消息生图 ──────────────────────────────────────────
-    bindSettingInput("#oair_message_gen_enabled", "messageGenEnabled", () => $("#oair_message_gen_enabled").prop("checked"));
-    bindSettingInput("#oair_summarize_template", "summarizeTemplate", () => $("#oair_summarize_template").val());
+    bindScopedInput(null, "#oair_fl_summarize_template", "summarizeTemplate", ($el) => $el.val());
 
     // ─── 手动生图 ──────────────────────────────────────────
-    $("#oair_btn_manual_gen").off("click").on("click", (e) => { e.preventDefault(); manualGenerate(); });
-    $("#oair_btn_optimize").off("click").on("click", (e) => { e.preventDefault(); manualOptimize(); });
-    $("#oair_btn_clear_manual").off("click").on("click", (e) => {
+    $("#oair_fl_btn_manual_gen").off("click.oair").on("click.oair", (e) => { e.preventDefault(); manualGenerate(); });
+    $("#oair_fl_btn_optimize").off("click.oair").on("click.oair", (e) => { e.preventDefault(); manualOptimize(); });
+    $("#oair_fl_btn_clear_manual").off("click.oair").on("click.oair", (e) => {
         e.preventDefault();
-        $("#oair_manual_preview").empty();
-        $("#oair_manual_optimized_prompt").hide();
-        $("#oair_manual_optimized_text").text("");
+        $("#oair_fl_manual_preview").empty();
+        $("#oair_fl_manual_optimized_prompt").hide();
+        $("#oair_fl_manual_optimized_text").text("");
         setStatus("预览已清空");
     });
 }
 
-function bindSettingInput(selector, key, getter) {
-    $(selector).off("input").on("input", () => {
-        extension_settings[extensionName][key] = getter();
-        saveSettingsDebounced();
-        applyMainPromptInjection();
-    });
+/**
+ * 双向绑定辅助：绑定面板和浮动窗口中的同一设置输入
+ * @param {string|null} panelSelector - 面板中的选择器
+ * @param {string|null} floatingSelector - 浮动窗口中的选择器
+ * @param {string} key - extension_settings 中的键名
+ * @param {function|null} getter - 从 jQuery 元素取值的函数
+ */
+function bindScopedInput(panelSelector, floatingSelector, key, getter) {
+    if (panelSelector && $(panelSelector).length) {
+        $(panelSelector).off("input.oair change.oair").on("input.oair change.oair", function () {
+            extension_settings[extensionName][key] = getter($(panelSelector));
+            saveSettingsDebounced();
+            applyMainPromptInjection();
+            syncAllUi();
+        });
+    }
+    if (floatingSelector && $(floatingSelector).length) {
+        $(floatingSelector).off("input.oair change.oair").on("input.oair change.oair", function () {
+            extension_settings[extensionName][key] = getter($(floatingSelector));
+            saveSettingsDebounced();
+            applyMainPromptInjection();
+            syncAllUi();
+        });
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 5: UI — SETTINGS SYNC
+// SECTION 10: UI — SETTINGS SYNC
 // ═══════════════════════════════════════════════════════════════
 
-function updateSettingsUi() {
+function syncAllUi() {
     const s = extension_settings[extensionName];
 
+    // ─── 面板 (L0) ────────────────────────────────────────
+    $("#oair_ui_drawer #oair_enabled").prop("checked", !!s.enabled);
+    $("#oair_ui_drawer #oair_fab_enabled").prop("checked", !!s.fabEnabled);
+
+    // ─── 浮动窗口 (L2) ───────────────────────────────────
     // 基础
-    $("#oair_enabled").prop("checked", !!s.enabled);
-    $("#oair_main_prompt").val(s.mainPrompt || "");
+    $("#oair_fl_enabled").prop("checked", !!s.enabled);
+    $("#oair_fl_main_prompt").val(s.mainPrompt || "");
+    $("#oair_fl_message_gen_enabled").prop("checked", s.messageGenEnabled !== false);
 
     // 后端
-    $("#oair_api_mode").val(s.apiMode || "chat");
-    $("#oair_service_url").val(s.serviceUrl || "");
-    $("#oair_api_key").val(s.apiKey || "");
-    $("#oair_model").val(s.model || "");
-    $("#oair_timeout_ms").val(Number(s.timeoutMs) || defaultSettings.timeoutMs);
-    $("#oair_prompt_template").val(s.promptTemplate || "");
-    $("#oair_images_prompt_template").val(s.imagesPromptTemplate || "");
-    $("#oair_image_size").val(s.imageSize || "1024x1024");
-    $("#oair_image_count").val(Number(s.imageCount) || 1);
-    $("#oair_image_response_format").val(s.imageResponseFormat || "url");
-    $("#oair_extra_body").val(s.extraBody || "");
+    $("#oair_fl_api_mode").val(s.apiMode || "chat");
+    $("#oair_fl_service_url").val(s.serviceUrl || "");
+    $("#oair_fl_api_key").val(s.apiKey || "");
+    $("#oair_fl_model").val(s.model || "");
+    $("#oair_fl_timeout_ms").val(Number(s.timeoutMs) || defaultSettings.timeoutMs);
+    $("#oair_fl_prompt_template").val(s.promptTemplate || "");
+    $("#oair_fl_images_prompt_template").val(s.imagesPromptTemplate || "");
+    $("#oair_fl_image_size").val(s.imageSize || "1024x1024");
+    $("#oair_fl_image_count").val(Number(s.imageCount) || 1);
+    $("#oair_fl_image_response_format").val(s.imageResponseFormat || "url");
+    $("#oair_fl_extra_body").val(s.extraBody || "");
 
-    // 切换 API 模式字段可见性
+    // API 模式字段可见性（浮动窗口内）
     const isImagesMode = (s.apiMode || "chat") === "images";
-    $(".oair-images-api-fields").toggle(isImagesMode);
-    $(".oair-chat-api-fields").toggle(!isImagesMode);
+    $("#oair_floating_panel .oair-images-api-fields").toggle(isImagesMode);
+    $("#oair_floating_panel .oair-chat-api-fields").toggle(!isImagesMode);
 
     // 提取
-    $("#oair_extraction_regex").val(s.extractionRegex || "");
-    $("#oair_response_image_regex").val(s.responseImageRegex || "");
+    $("#oair_fl_extraction_regex").val(s.extractionRegex || "");
+    $("#oair_fl_response_image_regex").val(s.responseImageRegex || "");
 
     // 优化
-    $("#oair_optimize_enabled").prop("checked", !!s.optimizeEnabled);
-    $("#oair_optimize_auto").prop("checked", !!s.optimizeAuto);
-    $("#oair_optimize_template").val(s.optimizeTemplate || "");
-    $("#oair_optimize_api_url").val(s.optimizeApiUrl || "");
-    $("#oair_optimize_model").val(s.optimizeModel || "");
-    $("#oair_optimize_api_key").val(s.optimizeApiKey || "");
+    $("#oair_fl_optimize_enabled").prop("checked", !!s.optimizeEnabled);
+    $("#oair_fl_optimize_auto").prop("checked", !!s.optimizeAuto);
+    $("#oair_fl_optimize_template").val(s.optimizeTemplate || "");
+    $("#oair_fl_optimize_api_url").val(s.optimizeApiUrl || "");
+    $("#oair_fl_optimize_model").val(s.optimizeModel || "");
+    $("#oair_fl_optimize_api_key").val(s.optimizeApiKey || "");
 
     // NSFW 规避
-    $("#oair_nsfw_avoidance").prop("checked", !!s.nsfwAvoidance);
-    $("#oair_nsfw_avoidance_template").val(s.nsfwAvoidanceTemplate || "");
+    $("#oair_fl_nsfw_avoidance").prop("checked", !!s.nsfwAvoidance);
+    $("#oair_fl_nsfw_avoidance_template").val(s.nsfwAvoidanceTemplate || "");
 
     // 消息生图
-    $("#oair_message_gen_enabled").prop("checked", s.messageGenEnabled !== false);
-    $("#oair_summarize_template").val(s.summarizeTemplate || "");
+    $("#oair_fl_summarize_template").val(s.summarizeTemplate || "");
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 6: MAIN PROMPT INJECTION
+// SECTION 11: MAIN PROMPT INJECTION & HELPERS
 // ═══════════════════════════════════════════════════════════════
 
 function ensureSettings() {
@@ -342,6 +694,9 @@ function applyMainPromptInjection() {
     );
 }
 
+/**
+ * 更新状态（面板 + 浮动窗口）
+ */
 function setStatus(text, kind = "info") {
     const colors = {
         info: "cyan",
@@ -349,7 +704,23 @@ function setStatus(text, kind = "info") {
         warning: "#ffd280",
         error: "#ff9090",
     };
-    $("#oair_status").text(text).css("color", colors[kind] || colors.info);
+    const color = colors[kind] || colors.info;
+
+    // 面板状态
+    $("#oair_status").text(text).css("color", color);
+    // 浮动窗口状态
+    $("#oair_fl_status").text(text).css("color", color);
+
+    // 同步 FAB 状态
+    if (kind === "success") {
+        updateFabState("success");
+    } else if (kind === "error") {
+        updateFabState("error");
+    } else if (kind === "info" && (text.includes("正在") || text.includes("处理中") || text.includes("生图"))) {
+        updateFabState("loading");
+    } else {
+        updateFabState("idle");
+    }
 }
 
 function setButtonLoading(selector, loading) {
@@ -363,7 +734,7 @@ function setButtonLoading(selector, loading) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 7: PROMPT PIPELINE (optimize + sanitize)
+// SECTION 12: PROMPT PIPELINE (optimize + sanitize)
 // ═══════════════════════════════════════════════════════════════
 
 /**
@@ -465,7 +836,7 @@ async function processPromptPipeline(prompt, options = {}) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 8: IMAGE REQUEST — DISPATCHER
+// SECTION 13: IMAGE REQUEST — DISPATCHER
 // ═══════════════════════════════════════════════════════════════
 
 /**
@@ -480,7 +851,7 @@ async function requestImagesFromBackend(prompt) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 9: IMAGE REQUEST — CHAT COMPLETIONS MODE
+// SECTION 14: IMAGE REQUEST — CHAT COMPLETIONS MODE
 // ═══════════════════════════════════════════════════════════════
 
 async function requestViaChatCompletions(prompt) {
@@ -527,7 +898,7 @@ async function requestViaChatCompletions(prompt) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 10: IMAGE REQUEST — IMAGES API MODE
+// SECTION 15: IMAGE REQUEST — IMAGES API MODE
 // ═══════════════════════════════════════════════════════════════
 
 /**
@@ -661,7 +1032,7 @@ function extractImagesFromImagesApiResponse(data) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 11: MESSAGE PROCESSING (auto pipeline)
+// SECTION 16: MESSAGE PROCESSING (auto pipeline)
 // ═══════════════════════════════════════════════════════════════
 
 async function onMessageReceived(messageId) {
@@ -752,22 +1123,23 @@ async function onMessageReceived(messageId) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 12: MANUAL GENERATION
+// SECTION 17: MANUAL GENERATION
 // ═══════════════════════════════════════════════════════════════
 
 async function manualGenerate() {
-    let prompt = String($("#oair_manual_prompt").val() || "").trim();
+    let prompt = String($("#oair_fl_manual_prompt").val() || "").trim();
     if (!prompt) {
         toastr.warning("请先输入提示词。");
         return;
     }
 
     setStatus("手动生图中...", "info");
-    setButtonLoading("#oair_btn_manual_gen", true);
+    setButtonLoading("#oair_fl_btn_manual_gen", true);
+    updateFabState("loading");
 
     try {
         // 如果有优化后的提示词，使用优化版本
-        const optimizedText = String($("#oair_manual_optimized_text").text() || "").trim();
+        const optimizedText = String($("#oair_fl_manual_optimized_text").text() || "").trim();
         if (optimizedText) {
             prompt = optimizedText;
         }
@@ -790,12 +1162,13 @@ async function manualGenerate() {
         setStatus(error.message, "error");
         toastr.error(error.message);
     } finally {
-        setButtonLoading("#oair_btn_manual_gen", false);
+        setButtonLoading("#oair_fl_btn_manual_gen", false);
+        updateFabState("idle");
     }
 }
 
 async function manualOptimize() {
-    const prompt = String($("#oair_manual_prompt").val() || "").trim();
+    const prompt = String($("#oair_fl_manual_prompt").val() || "").trim();
     if (!prompt) {
         toastr.warning("请先输入提示词。");
         return;
@@ -808,13 +1181,13 @@ async function manualOptimize() {
     }
 
     setStatus("正在优化提示词...", "info");
-    setButtonLoading("#oair_btn_optimize", true);
+    setButtonLoading("#oair_fl_btn_optimize", true);
 
     try {
         const optimized = await optimizePrompt(prompt);
         if (optimized && optimized !== prompt) {
-            $("#oair_manual_optimized_text").text(optimized);
-            $("#oair_manual_optimized_prompt").show();
+            $("#oair_fl_manual_optimized_text").text(optimized);
+            $("#oair_fl_manual_optimized_prompt").show();
             setStatus("提示词已优化", "success");
             toastr.success("提示词优化完成，可查看优化结果。");
         } else if (optimized === prompt) {
@@ -828,12 +1201,12 @@ async function manualOptimize() {
         setStatus(error.message, "error");
         toastr.error(error.message);
     } finally {
-        setButtonLoading("#oair_btn_optimize", false);
+        setButtonLoading("#oair_fl_btn_optimize", false);
     }
 }
 
 function renderManualPreview(images, content = "") {
-    const preview = $("#oair_manual_preview");
+    const preview = $("#oair_fl_manual_preview");
     preview.empty();
 
     for (const imageUrl of images) {
@@ -865,7 +1238,7 @@ function renderManualPreview(images, content = "") {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 13: MESSAGE IMAGE GENERATION (feat 6 & 7)
+// SECTION 18: MESSAGE IMAGE GENERATION (feat 6 & 7)
 // ═══════════════════════════════════════════════════════════════
 
 /**
@@ -1026,7 +1399,7 @@ async function summarizeMessageToPrompt(messageContent) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 14: HTTP & PARSING UTILITIES
+// SECTION 19: HTTP & PARSING UTILITIES
 // ═══════════════════════════════════════════════════════════════
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -1176,7 +1549,7 @@ function collectStructuredImages(source, endpoint, output) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 15: TEXT & REGEX UTILITIES
+// SECTION 20: TEXT & REGEX UTILITIES
 // ═══════════════════════════════════════════════════════════════
 
 function looksLikeImageRef(value) {
@@ -1364,7 +1737,7 @@ function stripHtmlTags(html) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 16: IMAGE HANDLING UTILITIES
+// SECTION 21: IMAGE HANDLING UTILITIES
 // ═══════════════════════════════════════════════════════════════
 
 function attachGeneratedImages(message, images, titles) {
