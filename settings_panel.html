@@ -1,0 +1,35 @@
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- 面板精简版 — 只保留基础开关和状态 -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="oair-panel-ui">
+    <!-- 状态栏 -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px; gap:8px;">
+        <div id="oair_status" style="font-size:0.8em; color:cyan;">就绪</div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.8em; white-space:nowrap;">
+            <input id="oair_enabled" type="checkbox">
+            启用
+        </label>
+    </div>
+
+    <!-- 悬浮快捷按钮开关 -->
+    <div class="oair-section">
+        <label class="oair-toggle-label">
+            <input id="oair_fab_enabled" type="checkbox">
+            显示悬浮快捷按钮
+        </label>
+        <div class="oair-hint">
+            勾选后屏幕右下角出现可拖拽的快捷按钮，点击打开详细配置窗口。<br>
+            适合需要频繁使用手动生图或调整配置的场景。
+        </div>
+    </div>
+
+    <!-- 快捷入口 -->
+    <div class="oair-section" style="margin-top:4px;">
+        <button id="oair_btn_open_floating" class="menu_button" style="width:100%; justify-content:center;">
+            🖼️ 打开详细配置窗口
+        </button>
+        <div class="oair-hint" style="margin-top:4px; text-align:center;">
+            或使用悬浮快捷按钮快速访问
+        </div>
+    </div>
+</div>

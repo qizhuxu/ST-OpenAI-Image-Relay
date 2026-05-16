@@ -1,0 +1,172 @@
+/* ═══════════════════════════════════════════════════════════════ */
+/* ST-OpenAI-Image-Relay — FAB & Floating Window Styles           */
+/* ═══════════════════════════════════════════════════════════════ */
+
+/* ─── FAB 悬浮快捷按钮 ──────────────────────────────────────── */
+#oair_fab {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 50, 0.95));
+    border: 2px solid var(--SmartThemeQuoteColor, #68a0ff);
+    color: var(--SmartThemeBodyColor, #ccc);
+    font-size: 18px;
+    cursor: grab;
+    z-index: 3010;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.3s ease;
+    user-select: none;
+    will-change: top, left;
+}
+
+#oair_fab:active {
+    cursor: grabbing;
+}
+
+#oair_fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+}
+
+#oair_fab.oair-fab--visible {
+    display: flex;
+}
+
+/* FAB 状态动画 */
+#oair_fab.oair-fab--loading {
+    border-color: #ffd280;
+    animation: oair-fab-pulse 1.5s ease-in-out infinite;
+}
+
+#oair_fab.oair-fab--loading i {
+    animation: oair-fab-spin 1s linear infinite;
+}
+
+#oair_fab.oair-fab--success {
+    border-color: #60ff90;
+    animation: oair-fab-flash 0.5s ease;
+}
+
+#oair_fab.oair-fab--error {
+    border-color: #ff9090;
+    animation: oair-fab-flash 0.5s ease;
+}
+
+@keyframes oair-fab-pulse {
+    0%, 100% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); }
+    50% { box-shadow: 0 4px 24px rgba(255, 210, 128, 0.4); }
+}
+
+@keyframes oair-fab-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes oair-fab-flash {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.8); }
+    100% { filter: brightness(1); }
+}
+
+/* 移动端自动显示 FAB（可选，默认桌面也需要手动勾选才显示） */
+@media (max-width: 1000px) {
+    /* 移动端可通过设置开启 */
+}
+
+/* ─── 悬浮配置窗口 ──────────────────────────────────────────── */
+#oair_floating_panel {
+    display: none;
+    position: fixed;
+    z-index: 3000;
+    width: 480px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 80px);
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 50, 0.98));
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(16px);
+    overflow: hidden;
+    flex-direction: column;
+}
+
+#oair_floating_panel.oair-floating--visible {
+    display: flex;
+}
+
+/* 悬浮窗标题栏 */
+.oair-floating-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.oair-floating-header:active {
+    cursor: grabbing;
+}
+
+.oair-floating-header h3 {
+    margin: 0;
+    font-size: 0.95em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.oair-floating-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: rgba(255,255,255,0.08);
+    color: var(--SmartThemeBodyColor, #ccc);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.15s;
+}
+
+.oair-floating-close:hover {
+    background: rgba(255, 80, 80, 0.3);
+}
+
+/* 悬浮窗内容区（可滚动） */
+.oair-floating-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+}
+
+/* ─── 面板精简版样式（复用通用组件） ──────────────────────── */
+.oair-panel-ui .oair-section {
+    background: rgba(0,0,0,0.15);
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.oair-panel-ui .oair-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8em;
+}
+
+.oair-panel-ui .oair-hint {
+    margin-top: 4px;
+    font-size: 0.72em;
+    opacity: 0.6;
+    line-height: 1.4;
+}
