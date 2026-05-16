@@ -99,9 +99,9 @@ const defaultSettings = {
 
     // ─── 后端 ──────────────────────────────────────────────
     apiMode: "chat",                            // "chat" | "images"
-    serviceUrl: "http://127.0.0.1:8199/v1/chat/completions",
-    apiKey: "sk-any",
-    model: "any",
+    serviceUrl: "",
+    apiKey: "",
+    model: "",
     timeoutMs: 120000,
     promptTemplate: "请根据以下提示词生成图片，并且只返回最终图片。\n\n{{prompt}}",
     imagesPromptTemplate: "{{prompt}}",         // images API 模板（默认直通）
@@ -143,14 +143,20 @@ $(function () {
     (async function () {
         ensureSettings();
         applyMainPromptInjection();
-        loadStylesheet();
 
-        // ─── L0: 注入面板 UI ──────────────────────────────
-        setInterval(() => {
-            if ($("#oair_ui_drawer").length > 0) return;
+        // ─── L0: 等待 SillyTavern 自动注入面板 HTML ──────
+        waitForElement("#ST-OpenAI-Image-Relay-settings").then(() => {
+            bindPanelEvents();
+            syncAllUi();
+            setStatus("就绪");
+        }).catch((err) => {
+            console.warn(`[${extensionName}] Panel element not found, falling back to manual injection`, err);
+            // Fallback: 如果 SillyTavern 没有自动注入，手动注入
             const container = $("#extensions_settings");
-            if (container.length > 0) injectUi(container);
-        }, 1000);
+            if (container.length > 0) {
+                injectUiFallback(container);
+            }
+        });
 
         // ─── L1: 创建 FAB ─────────────────────────────────
         createFab();
@@ -164,23 +170,32 @@ $(function () {
     })();
 });
 
-// ═══════════════════════════════════════════════════════════════
-// SECTION 4: UI — STYLESHEET LOADING
-// ═══════════════════════════════════════════════════════════════
-
-function loadStylesheet() {
-    if ($(`link[href="${extensionFolderPath}/style.css"]`).length > 0) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = `${extensionFolderPath}/style.css`;
-    document.head.appendChild(link);
+/**
+ * 等待指定元素出现在 DOM 中
+ * @param {string} selector - CSS 选择器
+ * @param {number} [timeout=10000] - 超时毫秒数
+ * @returns {Promise<jQuery>}
+ */
+function waitForElement(selector, timeout = 10000) {
+    return new Promise((resolve, reject) => {
+        const el = $(selector);
+        if (el.length) { resolve(el); return; }
+        const timer = setInterval(() => {
+            const el = $(selector);
+            if (el.length) { clearInterval(timer); resolve(el); }
+        }, 200);
+        setTimeout(() => { clearInterval(timer); reject(new Error(`Timeout waiting for ${selector}`)); }, timeout);
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 5: UI — PANEL INJECTION (L0)
+// SECTION 4: UI — PANEL INJECTION FALLBACK (L0)
 // ═══════════════════════════════════════════════════════════════
+// SillyTavern 通过 manifest.json 的 html 字段自动注入 settings_panel.html，
+// 并将其包裹在 #ST-OpenAI-Image-Relay-settings 的 inline-drawer 中。
+// 此函数仅在自动注入失败时作为回退使用。
 
-async function injectUi(container) {
+async function injectUiFallback(container) {
     let htmlContent = "";
 
     try {
@@ -191,7 +206,7 @@ async function injectUi(container) {
     }
 
     const drawerHtml = `
-    <div id="oair_ui_drawer" class="inline-drawer">
+    <div id="ST-OpenAI-Image-Relay-settings" class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
             <b>🖼️ 图片中继</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
@@ -451,6 +466,12 @@ function createFloatingPanel() {
         })
         .catch(function (error) {
             console.error(`[${extensionName}] Failed to load settings_full.html`, error);
+            panel.find(".oair-floating-body").html(
+                '<div style="padding:20px; text-align:center; color:#ff9090;">' +
+                '<p><b>配置页面加载失败</b></p>' +
+                '<p style="font-size:0.85em; opacity:0.7;">请检查插件文件是否完整，或尝试重新安装插件。</p>' +
+                '</div>'
+            );
         });
 }
 
@@ -479,20 +500,6 @@ function toggleFloatingPanel(show) {
 // ═══════════════════════════════════════════════════════════════
 
 function bindPanelEvents() {
-    // ─── 抽屉折叠 ─────────────────────────────────────────
-    $("#oair_ui_drawer .inline-drawer-toggle")
-        .off("click.oair")
-        .on("click.oair", function (event) {
-            event.stopPropagation();
-            event.preventDefault();
-            $(this).parent().find(".inline-drawer-content").slideToggle(200);
-            $(this).find(".inline-drawer-icon").toggleClass("down up");
-        });
-
-    $("#oair_ui_drawer .inline-drawer-content")
-        .off("click.oair")
-        .on("click.oair", (event) => event.stopPropagation());
-
     // ─── 面板设置 ─────────────────────────────────────────
     // 启用/禁用（双向同步）
     bindScopedInput("#oair_enabled", "#oair_fl_enabled", "enabled", ($el) => $el.prop("checked"));
@@ -516,6 +523,18 @@ function bindPanelEvents() {
     $("#oair_btn_open_floating").off("click.oair").on("click.oair", function (e) {
         e.preventDefault();
         toggleFloatingPanel(true);
+    });
+
+    // ─── 恢复默认设置按钮 ──────────────────────────────────
+    $("#oair_btn_reset").off("click.oair").on("click.oair", function (e) {
+        e.preventDefault();
+        if (confirm("确定要恢复所有设置为默认值吗？此操作不可撤销。")) {
+            extension_settings[extensionName] = structuredClone(defaultSettings);
+            saveSettingsDebounced();
+            applyMainPromptInjection();
+            syncAllUi();
+            setStatus("已恢复默认设置", "success");
+        }
     });
 }
 
@@ -616,8 +635,8 @@ function syncAllUi() {
     const s = extension_settings[extensionName];
 
     // ─── 面板 (L0) ────────────────────────────────────────
-    $("#oair_ui_drawer #oair_enabled").prop("checked", !!s.enabled);
-    $("#oair_ui_drawer #oair_fab_enabled").prop("checked", !!s.fabEnabled);
+    $("#ST-OpenAI-Image-Relay-settings #oair_enabled").prop("checked", !!s.enabled);
+    $("#ST-OpenAI-Image-Relay-settings #oair_fab_enabled").prop("checked", !!s.fabEnabled);
 
     // ─── 浮动窗口 (L2) ───────────────────────────────────
     // 基础

@@ -208,16 +208,16 @@
         <div class="oair-section">
             <div class="oair-section-title">连接配置</div>
             <label class="oair-field-label">服务地址</label>
-            <input id="oair_fl_service_url" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="http://127.0.0.1:8199/v1/chat/completions">
+            <input id="oair_fl_service_url" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="http://your-api-server/v1/chat/completions">
 
             <div class="oair-row">
                 <div>
                     <label class="oair-field-label">API 密钥</label>
-                    <input id="oair_fl_api_key" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="sk-any">
+                    <input id="oair_fl_api_key" type="password" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="sk-...">
                 </div>
                 <div>
                     <label class="oair-field-label">模型</label>
-                    <input id="oair_fl_model" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="any">
+                    <input id="oair_fl_model" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="模型名称">
                 </div>
             </div>
 
@@ -325,7 +325,7 @@
                         </div>
                         <div>
                             <label class="oair-field-label">优化 LLM API 密钥</label>
-                            <input id="oair_fl_optimize_api_key" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="留空则使用主密钥">
+                            <input id="oair_fl_optimize_api_key" type="password" class="text_pole" style="width:100%; box-sizing:border-box;" placeholder="留空则使用主密钥">
                         </div>
                     </div>
                 </div>
